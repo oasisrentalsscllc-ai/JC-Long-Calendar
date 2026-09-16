@@ -76,7 +76,7 @@ body{margin:0;background:var(--bg);color:var(--ink);
   <div id="jcl-bar">
     <span id="jcl-summary"></span>
     <span>
-      <a id="jcl-cta" href="#" target="_top" rel="noopener">Request these dates</a>
+      <a id="jcl-cta" href="#" target="_top" rel="noopener">Book Your Stay</a>
       <button id="jcl-clear">Clear</button>
     </span>
   </div>
@@ -172,8 +172,8 @@ BOOKED["2027-07-29"]=1;
 BOOKED["2027-07-30"]=1;
 var COVER_START = "2026-09-16";
 var COVER_END = "2027-09-30";
-var GENERATED_AT = "2026-09-16T22:23:52.756767+00:00";
-var INQUIRY = null; /* {type:"email",address} | {type:"url",url} | null */
+var GENERATED_AT = "2026-09-16T22:46:37.752154+00:00";
+var INQUIRY = {"type": "url", "url": "https://www.islandrealty.com/rentals/book-now/?propertyID=268&checkin={checkin}&checkout={checkout}", "label": "Book Your Stay", "date_format": "mdy"}; /* {type:"email",address} | {type:"url",url} | null */
 var PROPERTY = "Vitamin Sea";
 
 var MONTHS = ["January","February","March","April","May","June","July",
@@ -289,11 +289,20 @@ function inquiryHref(){
     return "mailto:"+INQUIRY.address+"?subject="+encodeURIComponent(subj)+"&body="+body;
   }
   if(INQUIRY.type==="url"){
-    return INQUIRY.url.split("{checkin}").join(selStart)
-                       .split("{checkout}").join(selEnd)
+    return INQUIRY.url.split("{checkin}").join(fmtDate(selStart))
+                       .split("{checkout}").join(fmtDate(selEnd))
                        .split("{nights}").join(String(n));
   }
   return "#";
+}
+
+/* Date formatting for URL placeholders: default ISO (YYYY-MM-DD);
+   "mdy" gives MM/DD/YYYY for booking engines like Island Realty. */
+function fmtDate(iso){
+  if(INQUIRY && INQUIRY.date_format==="mdy"){
+    var p=iso.split("-"); return p[1]+"/"+p[2]+"/"+p[0];
+  }
+  return iso;
 }
 
 function updateBar(){
@@ -325,5 +334,5 @@ document.getElementById("jcl-updated").textContent=
     {month:"short",day:"numeric",hour:"numeric",minute:"2-digit"});
 render();
 </script>
-<!-- rebuild 2026-09-16T15:32PDT --></body>
+</body>
 </html>
