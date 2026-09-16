@@ -1,0 +1,330 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>JC Long Blvd 11 &mdash; Availability</title>
+<style>
+:root{
+  --bg:#ffffff; --ink:#1f2937; --muted:#6b7280;
+  --avail-bg:#e9f7ef; --avail-ring:#1f9d55; --avail-ink:#146c43;
+  --booked-bg:#f3f4f6; --booked-ink:#9ca3af;
+  --accent:#0b6bcb; --accent-ink:#ffffff;
+  --sel-bg:#fff7d6; --sel-ring:#d9a400;
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);
+  font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+  -webkit-font-smoothing:antialiased}
+#jcl-app{max-width:680px;margin:0 auto;padding:20px 16px 28px}
+.jcl-head h1{font-size:22px;margin:0 0 4px;letter-spacing:-.01em}
+.jcl-sub{color:var(--muted);font-size:13px;margin:0 0 12px}
+.jcl-legend{display:flex;gap:18px;font-size:13px;color:var(--muted);margin-bottom:14px;flex-wrap:wrap}
+.jcl-dot{display:inline-block;width:12px;height:12px;border-radius:3px;margin-right:6px;vertical-align:-1px}
+.jcl-nav{display:flex;align-items:center;justify-content:space-between;margin:6px 0 10px}
+.jcl-nav button{border:1px solid #d1d5db;background:#fff;border-radius:10px;width:40px;height:40px;
+  font-size:20px;line-height:1;cursor:pointer;color:var(--ink)}
+.jcl-nav button:disabled{opacity:.3;cursor:default}
+#jcl-monthLabel{font-weight:650;font-size:16px}
+.jcl-grid{display:grid;grid-template-columns:repeat(7,1fr);gap:6px}
+.jcl-dow{text-align:center;font-size:11px;color:var(--muted);text-transform:uppercase;
+  letter-spacing:.05em;padding:4px 0}
+.jcl-day{aspect-ratio:1/1;border-radius:10px;border:1px solid transparent;font-size:14px;cursor:pointer;
+  display:flex;align-items:center;justify-content:center;background:var(--avail-bg);
+  color:var(--avail-ink);font-weight:500;padding:0;font-family:inherit}
+.jcl-day:hover{border-color:var(--avail-ring)}
+.jcl-day.booked{background:var(--booked-bg);color:var(--booked-ink);cursor:default;text-decoration:line-through}
+.jcl-day.booked:hover{border-color:transparent}
+.jcl-day.past{background:transparent;color:#d8dce1;cursor:default}
+.jcl-day.past:hover{border-color:transparent}
+.jcl-day.blank{background:transparent;cursor:default}
+.jcl-day.sel-start,.jcl-day.sel-end{background:var(--accent);color:var(--accent-ink);font-weight:700}
+.jcl-day.in-range{background:var(--sel-bg);border-color:var(--sel-ring);color:var(--ink)}
+#jcl-hint{font-size:13px;color:var(--muted);margin:10px 0 0;min-height:20px}
+#jcl-bar{margin-top:12px;border:1px solid #e5e7eb;border-radius:12px;padding:12px 14px;display:none;
+  align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;background:#f9fafb}
+#jcl-bar.show{display:flex}
+#jcl-summary{font-size:14px}
+#jcl-cta{background:var(--accent);color:var(--accent-ink);border:0;border-radius:10px;padding:10px 18px;
+  font-size:14px;font-weight:600;cursor:pointer;text-decoration:none;display:none;font-family:inherit}
+#jcl-cta.show{display:inline-block}
+#jcl-clear{background:none;border:0;color:var(--muted);font-size:13px;cursor:pointer;
+  text-decoration:underline;font-family:inherit;padding:10px 4px}
+.jcl-foot{margin-top:16px;font-size:12px;color:var(--muted);display:flex;
+  justify-content:space-between;gap:8px;flex-wrap:wrap}
+.jcl-foot a{color:var(--accent);text-decoration:none}
+.jcl-foot a:hover{text-decoration:underline}
+</style>
+</head>
+<body>
+<div id="jcl-app">
+  <div class="jcl-head">
+    <h1>JC Long Blvd 11</h1>
+    <p class="jcl-sub">Live availability &mdash; tap your dates to request a stay.</p>
+  </div>
+  <div class="jcl-legend">
+    <span><span class="jcl-dot" style="background:var(--avail-bg);border:1px solid var(--avail-ring)"></span>Available</span>
+    <span><span class="jcl-dot" style="background:var(--booked-bg)"></span>Booked</span>
+  </div>
+  <div class="jcl-nav">
+    <button id="jcl-prev" aria-label="Previous month">&lsaquo;</button>
+    <span id="jcl-monthLabel"></span>
+    <button id="jcl-next" aria-label="Next month">&rsaquo;</button>
+  </div>
+  <div class="jcl-grid" id="jcl-grid" role="grid" aria-label="Availability calendar"></div>
+  <p class="jcl-hint" id="jcl-hint"></p>
+  <div id="jcl-bar">
+    <span id="jcl-summary"></span>
+    <span>
+      <a id="jcl-cta" href="#" target="_top" rel="noopener">Request these dates</a>
+      <button id="jcl-clear">Clear</button>
+    </span>
+  </div>
+  <div class="jcl-foot">
+    <span id="jcl-updated"></span>
+    <a href="availability.ics" download>Download calendar (.ics)</a>
+  </div>
+</div>
+<script>
+"use strict";
+/* Data baked in at build time by publish.py (refreshed 2x/day). */
+var BOOKED = {};
+BOOKED["2026-09-01"]=1;
+BOOKED["2026-09-02"]=1;
+BOOKED["2026-09-03"]=1;
+BOOKED["2026-09-04"]=1;
+BOOKED["2026-09-05"]=1;
+BOOKED["2026-09-06"]=1;
+BOOKED["2026-09-07"]=1;
+BOOKED["2026-09-08"]=1;
+BOOKED["2026-09-09"]=1;
+BOOKED["2026-09-10"]=1;
+BOOKED["2026-09-11"]=1;
+BOOKED["2026-09-12"]=1;
+BOOKED["2026-09-13"]=1;
+BOOKED["2026-09-14"]=1;
+BOOKED["2026-09-15"]=1;
+BOOKED["2026-09-16"]=1;
+BOOKED["2026-09-17"]=1;
+BOOKED["2026-09-18"]=1;
+BOOKED["2026-09-19"]=1;
+BOOKED["2026-09-20"]=1;
+BOOKED["2026-09-21"]=1;
+BOOKED["2026-09-22"]=1;
+BOOKED["2026-09-24"]=1;
+BOOKED["2026-09-25"]=1;
+BOOKED["2026-09-26"]=1;
+BOOKED["2026-09-27"]=1;
+BOOKED["2026-09-28"]=1;
+BOOKED["2026-09-29"]=1;
+BOOKED["2026-09-30"]=1;
+BOOKED["2026-10-01"]=1;
+BOOKED["2026-10-02"]=1;
+BOOKED["2026-10-03"]=1;
+BOOKED["2026-10-04"]=1;
+BOOKED["2026-10-05"]=1;
+BOOKED["2026-10-06"]=1;
+BOOKED["2026-10-08"]=1;
+BOOKED["2026-10-09"]=1;
+BOOKED["2026-10-10"]=1;
+BOOKED["2026-10-11"]=1;
+BOOKED["2026-10-14"]=1;
+BOOKED["2026-10-15"]=1;
+BOOKED["2026-10-16"]=1;
+BOOKED["2026-10-17"]=1;
+BOOKED["2026-10-18"]=1;
+BOOKED["2026-10-19"]=1;
+BOOKED["2026-10-20"]=1;
+BOOKED["2026-10-21"]=1;
+BOOKED["2026-10-22"]=1;
+BOOKED["2026-10-23"]=1;
+BOOKED["2026-11-02"]=1;
+BOOKED["2026-11-03"]=1;
+BOOKED["2026-11-04"]=1;
+BOOKED["2026-11-05"]=1;
+BOOKED["2026-11-21"]=1;
+BOOKED["2026-11-22"]=1;
+BOOKED["2026-11-23"]=1;
+BOOKED["2026-11-24"]=1;
+BOOKED["2026-11-25"]=1;
+BOOKED["2026-11-26"]=1;
+BOOKED["2026-11-27"]=1;
+BOOKED["2026-12-28"]=1;
+BOOKED["2026-12-29"]=1;
+BOOKED["2026-12-30"]=1;
+BOOKED["2026-12-31"]=1;
+BOOKED["2027-01-01"]=1;
+BOOKED["2027-02-12"]=1;
+BOOKED["2027-02-13"]=1;
+BOOKED["2027-02-14"]=1;
+BOOKED["2027-02-15"]=1;
+BOOKED["2027-02-16"]=1;
+BOOKED["2027-02-17"]=1;
+BOOKED["2027-02-18"]=1;
+BOOKED["2027-02-19"]=1;
+BOOKED["2027-02-20"]=1;
+BOOKED["2027-02-21"]=1;
+BOOKED["2027-02-22"]=1;
+BOOKED["2027-02-23"]=1;
+BOOKED["2027-02-24"]=1;
+BOOKED["2027-02-25"]=1;
+BOOKED["2027-02-26"]=1;
+BOOKED["2027-03-14"]=1;
+BOOKED["2027-03-15"]=1;
+BOOKED["2027-03-16"]=1;
+BOOKED["2027-03-17"]=1;
+BOOKED["2027-03-18"]=1;
+BOOKED["2027-04-21"]=1;
+BOOKED["2027-04-22"]=1;
+BOOKED["2027-04-23"]=1;
+BOOKED["2027-04-24"]=1;
+BOOKED["2027-07-24"]=1;
+BOOKED["2027-07-25"]=1;
+BOOKED["2027-07-26"]=1;
+BOOKED["2027-07-27"]=1;
+BOOKED["2027-07-28"]=1;
+BOOKED["2027-07-29"]=1;
+BOOKED["2027-07-30"]=1;
+var COVER_START = "2026-09-16";
+var COVER_END = "2027-09-30";
+var GENERATED_AT = "2026-09-16T22:09:00.834970+00:00";
+var INQUIRY = null; /* {type:"email",address} | {type:"url",url} | null */
+var PROPERTY = "JC Long Blvd 11";
+
+var MONTHS = ["January","February","March","April","May","June","July",
+  "August","September","October","November","December"];
+var DOW = ["S","M","T","W","T","F","S"];
+
+var today = new Date(); today.setHours(0,0,0,0);
+var viewY = today.getFullYear(), viewM = today.getMonth();
+var selStart = null, selEnd = null;
+
+function iso(y,m,d){
+  return y+"-"+String(m+1).padStart(2,"0")+"-"+String(d).padStart(2,"0");
+}
+function parseISO(s){
+  var p=s.split("-"); return new Date(+p[0],+p[1]-1,+p[2]);
+}
+function pretty(s){
+  return parseISO(s).toLocaleDateString(undefined,
+    {weekday:"short",month:"short",day:"numeric"});
+}
+function nightsBetween(a,b){
+  return Math.round((parseISO(b)-parseISO(a))/86400000);
+}
+function inBookedRange(a,b){ /* any booked night in [a,b) ? */
+  var d=parseISO(a), end=parseISO(b);
+  while(d<end){
+    if(BOOKED[iso(d.getFullYear(),d.getMonth(),d.getDate())]) return true;
+    d.setDate(d.getDate()+1);
+  }
+  return false;
+}
+
+function render(){
+  var label=document.getElementById("jcl-monthLabel");
+  var grid=document.getElementById("jcl-grid");
+  label.textContent=MONTHS[viewM]+" "+viewY;
+  grid.innerHTML="";
+  DOW.forEach(function(d){
+    var e=document.createElement("div");
+    e.className="jcl-dow"; e.textContent=d; grid.appendChild(e);
+  });
+  var first=new Date(viewY,viewM,1).getDay();
+  var dim=new Date(viewY,viewM+1,0).getDate();
+  var todayS=iso(today.getFullYear(),today.getMonth(),today.getDate());
+  for(var i=0;i<first;i++){
+    var b=document.createElement("div"); b.className="jcl-day blank"; grid.appendChild(b);
+  }
+  for(var d=1;d<=dim;d++){
+    (function(day){
+      var s=iso(viewY,viewM,day);
+      var btn=document.createElement("button");
+      btn.type="button"; btn.textContent=day;
+      var cls="jcl-day";
+      if(s<todayS||s<COVER_START||s>COVER_END){ cls+=" past"; btn.disabled=true; }
+      else if(BOOKED[s]){ cls+=" booked"; btn.disabled=true; btn.title="Booked"; }
+      else{
+        btn.title="Available — tap to select";
+        if(selStart&&s===selStart) cls+=" sel-start";
+        if(selEnd&&s===selEnd) cls+=" sel-end";
+        if(selStart&&selEnd&&s>selStart&&s<selEnd) cls+=" in-range";
+        btn.onclick=function(){onPick(s);};
+      }
+      btn.className=cls; grid.appendChild(btn);
+    })(d);
+  }
+  /* nav bounds: current month .. coverage end month */
+  var cS=iso(today.getFullYear(),today.getMonth(),1);
+  var vS=iso(viewY,viewM,1);
+  var eP=parseISO(COVER_END); var eS=iso(eP.getFullYear(),eP.getMonth(),1);
+  document.getElementById("jcl-prev").disabled = (vS<=cS);
+  document.getElementById("jcl-next").disabled = (vS>=eS);
+  updateBar();
+}
+
+function onPick(s){
+  var hint=document.getElementById("jcl-hint");
+  if(!selStart||(selStart&&selEnd)){ selStart=s; selEnd=null; hint.textContent="Now tap your checkout date."; }
+  else{
+    if(s<=selStart){ selStart=s; selEnd=null; hint.textContent="Now tap your checkout date."; }
+    else if(inBookedRange(selStart,s)){
+      selStart=s; selEnd=null;
+      hint.textContent="Those dates include booked nights — starting a new selection.";
+    }
+    else{ selEnd=s; hint.textContent=""; }
+  }
+  render();
+}
+
+function inquiryHref(){
+  if(!INQUIRY||!selStart||!selEnd) return "#";
+  var n=nightsBetween(selStart,selEnd);
+  var rangeTxt=pretty(selStart)+" → "+pretty(selEnd)+" ("+n+(n===1?" night":" nights")+")";
+  if(INQUIRY.type==="email"){
+    var subj="Booking inquiry: "+PROPERTY+" ("+rangeTxt+")";
+    var body="Hi,%0D%0A%0D%0AI'd like to request a stay at "+encodeURIComponent(PROPERTY)+":"
+      +"%0D%0ACheck-in: "+encodeURIComponent(pretty(selStart))
+      +"%0D%0ACheck-out: "+encodeURIComponent(pretty(selEnd))
+      +"%0D%0ANights: "+n+"%0D%0A%0D%0AThank you!";
+    return "mailto:"+INQUIRY.address+"?subject="+encodeURIComponent(subj)+"&body="+body;
+  }
+  if(INQUIRY.type==="url"){
+    return INQUIRY.url.split("{checkin}").join(selStart)
+                       .split("{checkout}").join(selEnd)
+                       .split("{nights}").join(String(n));
+  }
+  return "#";
+}
+
+function updateBar(){
+  var bar=document.getElementById("jcl-bar");
+  var cta=document.getElementById("jcl-cta");
+  if(selStart&&selEnd){
+    var n=nightsBetween(selStart,selEnd);
+    document.getElementById("jcl-summary").innerHTML=
+      "<b>"+pretty(selStart)+"</b> &rarr; <b>"+pretty(selEnd)+"</b> &middot; "+n+(n===1?" night":" nights");
+    bar.classList.add("show");
+    if(INQUIRY){ cta.href=inquiryHref(); cta.classList.add("show"); }
+    else{ cta.classList.remove("show"); }
+  }else{
+    bar.classList.remove("show"); cta.classList.remove("show");
+  }
+}
+
+document.getElementById("jcl-prev").onclick=function(){
+  viewM--; if(viewM<0){viewM=11;viewY--;} render();
+};
+document.getElementById("jcl-next").onclick=function(){
+  viewM++; if(viewM>11){viewM=0;viewY++;} render();
+};
+document.getElementById("jcl-clear").onclick=function(){
+  selStart=selEnd=null; document.getElementById("jcl-hint").textContent=""; render();
+};
+document.getElementById("jcl-updated").textContent=
+  "Last updated "+new Date(GENERATED_AT).toLocaleString(undefined,
+    {month:"short",day:"numeric",hour:"numeric",minute:"2-digit"});
+render();
+</script>
+</body>
+</html>
