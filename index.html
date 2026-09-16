@@ -18,7 +18,6 @@ body{margin:0;background:var(--bg);color:var(--ink);
   -webkit-font-smoothing:antialiased}
 #jcl-app{max-width:680px;margin:0 auto;padding:20px 16px 28px}
 .jcl-head h1{font-size:22px;margin:0 0 4px;letter-spacing:-.01em}
-.jcl-sub{color:var(--muted);font-size:13px;margin:0 0 4px}
 .jcl-rate{color:var(--muted);font-size:12.5px;margin:0 0 12px}
 .jcl-legend{display:flex;gap:18px;font-size:13px;color:var(--muted);margin-bottom:14px;flex-wrap:wrap}
 .jcl-dot{display:inline-block;width:12px;height:12px;border-radius:3px;margin-right:6px;vertical-align:-1px}
@@ -41,7 +40,8 @@ body{margin:0;background:var(--bg);color:var(--ink);
 .jcl-day.blank{background:transparent;cursor:default}
 .jcl-day.sel-start,.jcl-day.sel-end{background:var(--accent);color:var(--accent-ink);font-weight:700}
 .jcl-day.in-range{background:var(--sel-bg);border-color:var(--sel-ring);color:var(--ink)}
-#jcl-hint{font-size:13px;color:var(--muted);margin:10px 0 0;min-height:20px}
+#jcl-status{font-size:13px;color:var(--muted);margin:10px 0 0;min-height:20px;text-align:center}
+#jcl-status.hidden{display:none}
 #jcl-bar{margin-top:12px;border:1px solid #e5e7eb;border-radius:12px;padding:12px 14px;display:none;
   align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;background:#f9fafb}
 #jcl-bar.show{display:flex}
@@ -51,17 +51,12 @@ body{margin:0;background:var(--bg);color:var(--ink);
 #jcl-cta.show{display:inline-block}
 #jcl-clear{background:none;border:0;color:var(--muted);font-size:13px;cursor:pointer;
   text-decoration:underline;font-family:inherit;padding:10px 4px}
-.jcl-foot{margin-top:16px;font-size:12px;color:var(--muted);display:flex;
-  justify-content:space-between;gap:8px;flex-wrap:wrap}
-.jcl-foot a{color:var(--accent);text-decoration:none}
-.jcl-foot a:hover{text-decoration:underline}
 </style>
 </head>
 <body>
 <div id="jcl-app">
   <div class="jcl-head">
     <h1>Vitamin Sea</h1>
-    <p class="jcl-sub">Tap your dates to request a stay.</p>
     <p class="jcl-rate">Starting at $900/night; rates vary by date and duration.</p>
   </div>
   <div class="jcl-legend">
@@ -74,15 +69,13 @@ body{margin:0;background:var(--bg);color:var(--ink);
     <button id="jcl-next" aria-label="Next month">&rsaquo;</button>
   </div>
   <div class="jcl-grid" id="jcl-grid" role="grid" aria-label="Availability calendar"></div>
-  <p class="jcl-hint" id="jcl-hint"></p>
+  <p id="jcl-status">Tap your dates to request a stay.</p>
   <div id="jcl-bar">
     <span id="jcl-summary"></span>
     <span>
       <a id="jcl-cta" href="#" target="_top" rel="noopener">Book Your Stay</a>
       <button id="jcl-clear">Clear</button>
     </span>
-  </div>
-  <div class="jcl-foot">
   </div>
 </div>
 <script>
@@ -247,16 +240,18 @@ function render(){
   updateBar();
 }
 
+/* Transient status-line override (e.g. invalid-range notice); cleared on next pick. */
+var statusOverride=null;
 function onPick(s){
-  var hint=document.getElementById("jcl-hint");
-  if(!selStart||(selStart&&selEnd)){ selStart=s; selEnd=null; hint.textContent="Now tap your checkout date."; }
+  statusOverride=null;
+  if(!selStart||(selStart&&selEnd)){ selStart=s; selEnd=null; }
   else{
-    if(s<=selStart){ selStart=s; selEnd=null; hint.textContent="Now tap your checkout date."; }
+    if(s<=selStart){ selStart=s; selEnd=null; }
     else if(inBookedRange(selStart,s)){
       selStart=s; selEnd=null;
-      hint.textContent="Those dates include booked nights — starting a new selection.";
+      statusOverride="Those dates include booked nights — starting a new selection.";
     }
-    else{ selEnd=s; hint.textContent=""; }
+    else{ selEnd=s; }
   }
   render(); broadcast();
 }
@@ -307,15 +302,19 @@ function fmtDate(iso){
 function updateBar(){
   var bar=document.getElementById("jcl-bar");
   var cta=document.getElementById("jcl-cta");
+  var status=document.getElementById("jcl-status");
   if(selStart&&selEnd){
     var n=nightsBetween(selStart,selEnd);
     document.getElementById("jcl-summary").innerHTML=
       "<b>"+pretty(selStart)+"</b> &rarr; <b>"+pretty(selEnd)+"</b> &middot; "+n+(n===1?" night":" nights");
     bar.classList.add("show");
+    status.classList.add("hidden");
     if(INQUIRY){ cta.href=inquiryHref(); cta.classList.add("show"); }
     else{ cta.classList.remove("show"); }
   }else{
     bar.classList.remove("show"); cta.classList.remove("show");
+    status.classList.remove("hidden");
+    status.textContent=statusOverride||(selStart?"Now tap your checkout date.":"Tap your dates to request a stay.");
   }
 }
 
@@ -326,7 +325,7 @@ document.getElementById("jcl-next").onclick=function(){
   viewM++; if(viewM>11){viewM=0;viewY++;} render();
 };
 document.getElementById("jcl-clear").onclick=function(){
-  selStart=selEnd=null; document.getElementById("jcl-hint").textContent=""; render(); broadcast();
+  selStart=selEnd=null; statusOverride=null; render(); broadcast();
 };
 render();
 </script>
