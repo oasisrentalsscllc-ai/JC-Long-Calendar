@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>JC Long Blvd 11 &mdash; Availability</title>
+<title>Vitamin Sea &mdash; Availability</title>
 <style>
 :root{
   --bg:#ffffff; --ink:#1f2937; --muted:#6b7280;
@@ -59,7 +59,7 @@ body{margin:0;background:var(--bg);color:var(--ink);
 <body>
 <div id="jcl-app">
   <div class="jcl-head">
-    <h1>JC Long Blvd 11</h1>
+    <h1>Vitamin Sea</h1>
     <p class="jcl-sub">Live availability &mdash; tap your dates to request a stay.</p>
   </div>
   <div class="jcl-legend">
@@ -172,9 +172,9 @@ BOOKED["2027-07-29"]=1;
 BOOKED["2027-07-30"]=1;
 var COVER_START = "2026-09-16";
 var COVER_END = "2027-09-30";
-var GENERATED_AT = "2026-09-16T22:10:07.621085+00:00";
+var GENERATED_AT = "2026-09-16T22:23:52.756767+00:00";
 var INQUIRY = null; /* {type:"email",address} | {type:"url",url} | null */
-var PROPERTY = "JC Long Blvd 11";
+var PROPERTY = "Vitamin Sea";
 
 var MONTHS = ["January","February","March","April","May","June","July",
   "August","September","October","November","December"];
@@ -259,7 +259,21 @@ function onPick(s){
     }
     else{ selEnd=s; hint.textContent=""; }
   }
-  render();
+  render(); broadcast();
+}
+
+/* Broadcast the current selection to the embedding page (e.g. Wix) so host
+   page buttons can pick up the chosen dates. Same-origin policy blocks the
+   parent from reading the iframe, so we push via postMessage. */
+function broadcast(){
+  try{
+    window.parent.postMessage({
+      type:"vitamin-sea-selection",
+      checkin:selStart||null,
+      checkout:selEnd||null,
+      nights:(selStart&&selEnd)?nightsBetween(selStart,selEnd):0
+    },"*");
+  }catch(e){}
 }
 
 function inquiryHref(){
@@ -304,7 +318,7 @@ document.getElementById("jcl-next").onclick=function(){
   viewM++; if(viewM>11){viewM=0;viewY++;} render();
 };
 document.getElementById("jcl-clear").onclick=function(){
-  selStart=selEnd=null; document.getElementById("jcl-hint").textContent=""; render();
+  selStart=selEnd=null; document.getElementById("jcl-hint").textContent=""; render(); broadcast();
 };
 document.getElementById("jcl-updated").textContent=
   "Last updated "+new Date(GENERATED_AT).toLocaleString(undefined,
