@@ -73,7 +73,7 @@ body{margin:0;background:var(--bg);color:var(--ink);
     <button id="jcl-next" aria-label="Next month">&rsaquo;</button>
   </div>
   <div class="jcl-grid" id="jcl-grid" role="grid" aria-label="Availability calendar"></div>
-  <p id="jcl-status">Tap your dates to request a stay.</p>
+  <p id="jcl-status">Tap your dates to check rates and book.</p>
   <div id="jcl-bar">
     <span id="jcl-summary"></span>
     <span>
@@ -318,7 +318,7 @@ function updateBar(){
   }else{
     bar.classList.remove("show"); cta.classList.remove("show");
     status.classList.remove("hidden");
-    status.textContent=statusOverride||(selStart?"Now tap your checkout date.":"Tap your dates to request a stay.");
+    status.textContent=statusOverride||(selStart?"Now tap your checkout date.":"Tap your dates to check rates and book.");
   }
 }
 
