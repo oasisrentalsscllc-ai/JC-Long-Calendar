@@ -14,6 +14,17 @@
   gtag('js', new Date());
   gtag('config', 'AW-18505762396');
 </script>
+<script>
+!function(f,b,e,v,n,t,s)
+{if(f.fbq)return;n=f.fbq=function(){n.callMethod?
+n.callMethod.apply(n,arguments):n.queue.push(arguments)};
+if(!f._fbq)f._fbq=n;n.push=n;n.loaded=!0;n.version='2.0';
+n.queue=[];t=b.createElement(e);t.async=!0;
+t.src=v;s=b.getElementsByTagName(e)[0];
+s.parentNode.insertBefore(t,s)}(window, document,'script',
+'https://connect.facebook.net/en_US/fbevents.js');
+fbq('init', '1631241165061482');
+</script>
 <style>
 :root{
   --bg:#fefcf7; --ink:#1f1b16; --muted:#8a7c66;
@@ -161,6 +172,7 @@ var COVER_END = "2027-10-31";
 var INQUIRY = {"type": "url", "url": "https://www.islandrealty.com/rentals/book-now/?propertyID=268&checkin={checkin}&checkout={checkout}", "label": "Check Rates & Book", "date_format": "mdy"}; /* {type:"email",address} | {type:"url",url} | null */
 var PROPERTY = "Vitamin Sea";
 var GADS = {"conversion_id": "AW-18505762396", "book_click_label": "ZTLiCPbimpgdENyMnvhE", "date_select_label": "s-xnCPHNppgdENyMnvhE"}; /* null until config.json gains a google_ads block */
+var FBP = {"pixel_id": "1631241165061482"}; /* null until config.json gains a meta_pixel block */
 
 var MONTHS = ["January","February","March","April","May","June","July",
   "August","September","October","November","December"];
@@ -316,6 +328,8 @@ function gadsFirePrimary(){
       "event_callback": function(){ gadsNavigateTop(url); }
     });
   }catch(e){ gadsNavigateTop(url); return; }
+  /* Mirror the book click into the Meta Pixel as a Lead. */
+  fbpTrack("Lead");
   /* Fallback: ad blockers or a slow beacon must not strand the click. */
   setTimeout(function(){ gadsNavigateTop(url); }, 900);
 }
@@ -329,6 +343,15 @@ function gadsFireMicro(){
       "send_to": GADS.conversion_id + "/" + GADS.date_select_label
     });
   }catch(e){}
+  /* Mirror the funnel step into the Meta Pixel (deduped by the key above). */
+  fbpTrack("InitiateCheckout");
+}
+
+/* Meta Pixel event mirroring. PageView is handled by the Wix-side pixel;
+   the iframe only fires funnel events the parent page cannot see. */
+function fbpTrack(eventName){
+  if(!FBP || !FBP.pixel_id || typeof fbq === "undefined") return;
+  try{ fbq("track", eventName); }catch(e){}
 }
 
 function updateBar(){
