@@ -7,6 +7,13 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600&family=Wix+Madefor+Text:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<script async src="https://www.googletagmanager.com/gtag/js?id=AW-18505762396"></script>
+<script>
+  window.dataLayer = window.dataLayer || [];
+  function gtag(){dataLayer.push(arguments);}
+  gtag('js', new Date());
+  gtag('config', 'AW-18505762396');
+</script>
 <style>
 :root{
   --bg:#fefcf7; --ink:#1f1b16; --muted:#8a7c66;
@@ -153,6 +160,7 @@ var COVER_START = "2026-10-10";
 var COVER_END = "2027-10-31";
 var INQUIRY = {"type": "url", "url": "https://www.islandrealty.com/rentals/book-now/?propertyID=268&checkin={checkin}&checkout={checkout}", "label": "Check Rates & Book", "date_format": "mdy"}; /* {type:"email",address} | {type:"url",url} | null */
 var PROPERTY = "Vitamin Sea";
+var GADS = {"conversion_id": "AW-18505762396", "book_click_label": "ZTLiCPbimpgdENyMnvhE", "date_select_label": "s-xnCPHNppgdENyMnvhE"}; /* null until config.json gains a google_ads block */
 
 var MONTHS = ["January","February","March","April","May","June","July",
   "August","September","October","November","December"];
@@ -240,6 +248,7 @@ function onPick(s){
     else{ selEnd=s; }
   }
   render(); broadcast();
+  if(selStart && selEnd){ gadsFireMicro(); }
 }
 
 /* Broadcast the current selection to the embedding page (e.g. Wix) so host
@@ -285,6 +294,43 @@ function fmtDate(iso){
   return iso;
 }
 
+/* Google Ads conversion tracking. The primary conversion fires on the
+   "Check Rates & Book" click; the date-selection micro-conversion fires
+   when a complete date range is picked. Both are inert until config.json
+   supplies a google_ads block (conversion_id + labels). */
+var _gadsLastMicro = null;
+var _gadsNavigated = false;
+function gadsNavigateTop(url){
+  if(_gadsNavigated) return; _gadsNavigated = true;
+  try{ window.top.location.href = url; }catch(e){ window.location.href = url; }
+}
+function gadsFirePrimary(){
+  var url = document.getElementById("jcl-cta").href;
+  if(!GADS || !GADS.book_click_label || typeof gtag === "undefined"){
+    gadsNavigateTop(url); return;
+  }
+  _gadsNavigated = false;
+  try{
+    gtag("event", "conversion", {
+      "send_to": GADS.conversion_id + "/" + GADS.book_click_label,
+      "event_callback": function(){ gadsNavigateTop(url); }
+    });
+  }catch(e){ gadsNavigateTop(url); return; }
+  /* Fallback: ad blockers or a slow beacon must not strand the click. */
+  setTimeout(function(){ gadsNavigateTop(url); }, 900);
+}
+function gadsFireMicro(){
+  if(!GADS || !GADS.date_select_label || typeof gtag === "undefined") return;
+  var key = selStart + "|" + selEnd;
+  if(key === _gadsLastMicro) return;
+  _gadsLastMicro = key;
+  try{
+    gtag("event", "conversion", {
+      "send_to": GADS.conversion_id + "/" + GADS.date_select_label
+    });
+  }catch(e){}
+}
+
 function updateBar(){
   var bar=document.getElementById("jcl-bar");
   var cta=document.getElementById("jcl-cta");
@@ -309,6 +355,10 @@ document.getElementById("jcl-prev").onclick=function(){
 };
 document.getElementById("jcl-next").onclick=function(){
   viewM++; if(viewM>11){viewM=0;viewY++;} render();
+};
+document.getElementById("jcl-cta").onclick=function(e){
+  e.preventDefault();
+  gadsFirePrimary();
 };
 document.getElementById("jcl-clear").onclick=function(){
   selStart=selEnd=null; statusOverride=null; render(); broadcast();
