@@ -246,6 +246,11 @@ function validStay(ci,co){
   if(satOnly(ci)){
     if(parseISO(ci).getDay()!==6||parseISO(co).getDay()!==6) return false;
     if(n<7) return false;
+  }else if(!inSatWindow(ci)&&inSatWindow(co)&&parseISO(co).getDay()!==6
+      &&nightsBetween(todayS,co)>((RULES&&RULES.relax_within_days)||30)){
+    /* Arrives before the season but departs inside a strict Sat-to-Sat
+       window: the departure must land on a Saturday. */
+    return false;
   }else if(n<minNights()) return false;
   return !inBookedRange(ci,co);
 }
@@ -257,9 +262,11 @@ function canCheckIn(s){
     var co=addDays(s,off);
     if(co>COVER_END) return false;
     if(inBookedRange(s,co)) return false;
+    if(!BOOKED[co]&&validStay(s,co)) return true;
     /* If the checkout morning is another guest's arrival day, any later
-       checkout would span that booked night too -- no valid checkout. */
-    return !BOOKED[co];
+       checkout would span that booked night too -- no valid checkout.
+       (An open but rule-invalid candidate just advances the search.) */
+    if(BOOKED[co]) return false;
   }
 }
 function canCheckOut(s){
