@@ -57,6 +57,13 @@ body{margin:0;background:var(--bg);color:var(--ink);
 .jcl-day:hover{border-color:var(--avail-ring)}
 .jcl-day.booked{background:var(--booked-bg);color:var(--booked-ink);cursor:default;text-decoration:line-through}
 .jcl-day.booked:hover{border-color:transparent}
+.jcl-day.avail-either{box-shadow:inset 0 0 0 1px var(--avail-ring)}
+.jcl-day.avail-in{box-shadow:inset 3px 0 0 var(--avail-ring)}
+.jcl-day.avail-out{box-shadow:inset -3px 0 0 var(--avail-ring)}
+.jcl-day.avail-mid{background:#eef4f3;color:#7d9a97}
+.jcl-day.dim{opacity:.45}
+.jcl-day.nopick{cursor:default}
+.jcl-day.nopick:hover{border-color:transparent}
 .jcl-day.past{background:transparent;color:#d8dce1;cursor:default}
 .jcl-day.past:hover{border-color:transparent}
 .jcl-day.blank{background:transparent;cursor:default}
@@ -82,7 +89,10 @@ body{margin:0;background:var(--bg);color:var(--ink);
     <p class="jcl-rate">Starting at $900/night; rates vary by date and duration.</p>
   </div>
   <div class="jcl-legend">
-    <span><span class="jcl-dot" style="background:var(--avail-bg);border:1px solid var(--avail-ring)"></span>Available</span>
+    <span><span class="jcl-dot" style="background:var(--avail-bg);box-shadow:inset 0 0 0 1px var(--avail-ring)"></span>Check-in or check-out</span>
+    <span><span class="jcl-dot" style="background:var(--avail-bg);box-shadow:inset 3px 0 0 var(--avail-ring)"></span>Check-in only</span>
+    <span><span class="jcl-dot" style="background:var(--avail-bg);box-shadow:inset -3px 0 0 var(--avail-ring)"></span>Check-out only</span>
+    <span><span class="jcl-dot" style="background:#eef4f3"></span>Mid-stay only</span>
     <span><span class="jcl-dot" style="background:var(--booked-bg)"></span>Booked</span>
   </div>
   <div class="jcl-nav">
@@ -171,6 +181,7 @@ var INQUIRY = {"type": "url", "url": "https://www.islandrealty.com/rentals/book-
 var PROPERTY = "Vitamin Sea";
 var GADS = {"conversion_id": "AW-18505762396", "book_click_label": "ZTLiCPbimpgdENyMnvhE", "date_select_label": "s-xnCPHNppgdENyMnvhE"}; /* null until config.json gains a google_ads block */
 var FBP = {"pixel_id": "1631241165061482"}; /* null until config.json gains a meta_pixel block */
+var RULES = {"min_nights": 3, "relax_within_days": 30, "sat_to_sat_windows": [{"start": "2027-05-29", "end": "2027-08-13"}]}; /* {min_nights, relax_within_days, sat_to_sat_windows:[{start,end}]} */
 
 var MONTHS = ["January","February","March","April","May","June","July",
   "August","September","October","November","December"];
@@ -202,6 +213,84 @@ function inBookedRange(a,b){ /* any booked night in [a,b) ? */
   return false;
 }
 
+/* ---- Island Realty booking rules (config.json -> booking_rules) ----
+   Year-round minimum stay. Inside a Saturday-to-Saturday window, stays
+   must run Saturday to Saturday -- unless arrival is within
+   RULES.relax_within_days of today, when the window relaxes to the plain
+   minimum stay. Open dates are color-coded by whether a stay can start
+   there (check-in), end there (check-out), both, or neither (mid-stay). */
+var todayS = iso(today.getFullYear(),today.getMonth(),today.getDate());
+function addDays(s,n){
+  var d=parseISO(s); d.setDate(d.getDate()+n);
+  return iso(d.getFullYear(),d.getMonth(),d.getDate());
+}
+function minNights(){ return (RULES&&RULES.min_nights)||3; }
+function inSatWindow(s){
+  if(!RULES||!RULES.sat_to_sat_windows) return false;
+  for(var i=0;i<RULES.sat_to_sat_windows.length;i++){
+    var w=RULES.sat_to_sat_windows[i];
+    if(s>=w.start&&s<=w.end) return true;
+  }
+  return false;
+}
+function satOnly(ci){ /* strict Sat-to-Sat applies to a stay arriving on ci */
+  if(!inSatWindow(ci)) return false;
+  return nightsBetween(todayS,ci) > ((RULES&&RULES.relax_within_days)||30);
+}
+function isOpenDate(s){ /* selectable date: in coverage, not past, night free */
+  return s>=todayS&&s>=COVER_START&&s<=COVER_END&&!BOOKED[s];
+}
+function validStay(ci,co){
+  if(co<=ci||!isOpenDate(ci)||!isOpenDate(co)) return false;
+  var n=nightsBetween(ci,co);
+  if(satOnly(ci)){
+    if(parseISO(ci).getDay()!==6||parseISO(co).getDay()!==6) return false;
+    if(n<7) return false;
+  }else if(n<minNights()) return false;
+  return !inBookedRange(ci,co);
+}
+function canCheckIn(s){
+  if(!isOpenDate(s)) return false;
+  if(satOnly(s)&&parseISO(s).getDay()!==6) return false;
+  var strict=satOnly(s), step=strict?7:1, off=strict?7:minNights();
+  for(;;off+=step){
+    var co=addDays(s,off);
+    if(co>COVER_END) return false;
+    if(inBookedRange(s,co)) return false;
+    /* If the checkout morning is another guest's arrival day, any later
+       checkout would span that booked night too -- no valid checkout. */
+    return !BOOKED[co];
+  }
+}
+function canCheckOut(s){
+  if(!isOpenDate(s)) return false;
+  var off, ci;
+  /* plain / relaxed stays: some arrival >= minNights earlier, same open run */
+  for(off=minNights();;off++){
+    ci=addDays(s,-off);
+    if(ci<todayS||ci<COVER_START) break;
+    if(BOOKED[ci]) break;
+    if(!satOnly(ci)&&validStay(ci,s)) return true;
+  }
+  /* Saturday-to-Saturday stays */
+  if(parseISO(s).getDay()===6){
+    for(off=7;;off+=7){
+      ci=addDays(s,-off);
+      if(ci<todayS||ci<COVER_START) break;
+      if(BOOKED[ci]) break;
+      if(validStay(ci,s)) return true;
+    }
+  }
+  return false;
+}
+function eligClass(s){ /* color-coding class for an open date */
+  var i=canCheckIn(s), o=canCheckOut(s);
+  if(i&&o) return "avail-either";
+  if(i) return "avail-in";
+  if(o) return "avail-out";
+  return "avail-mid";
+}
+
 function render(){
   var label=document.getElementById("jcl-monthLabel");
   var grid=document.getElementById("jcl-grid");
@@ -226,11 +315,34 @@ function render(){
       if(s<todayS||s<COVER_START||s>COVER_END){ cls+=" past"; btn.disabled=true; }
       else if(BOOKED[s]){ cls+=" booked"; btn.disabled=true; btn.title="Booked"; }
       else{
-        btn.title="Available — tap to select";
+        var ec=eligClass(s);
+        cls+=" "+ec;
         if(selStart&&s===selStart) cls+=" sel-start";
         if(selEnd&&s===selEnd) cls+=" sel-end";
         if(selStart&&selEnd&&s>selStart&&s<selEnd) cls+=" in-range";
-        btn.onclick=function(){onPick(s);};
+        btn.title = ec==="avail-in" ? "Check-in only"
+          : ec==="avail-out" ? "Check-out only"
+          : ec==="avail-mid" ? "Open night — mid-stay only"
+          : "Available — check-in or check-out";
+        var clickable;
+        if(!selStart||(selStart&&selEnd)){
+          /* picking a check-in: only dates a stay can start on */
+          clickable=canCheckIn(s);
+          if(!clickable) cls+=" nopick";
+        }else if(s===selStart){
+          clickable=true; /* tap again to clear */
+        }else if(s>selStart){
+          /* picking a check-out: only dates that complete a valid stay */
+          clickable=validStay(selStart,s);
+          if(clickable) btn.title="Tap to check out here";
+          else cls+=" nopick dim";
+        }else{
+          /* earlier date while picking a check-out restarts the selection */
+          clickable=canCheckIn(s);
+          if(!clickable) cls+=" nopick dim";
+        }
+        if(clickable){ btn.onclick=function(){onPick(s);}; }
+        else{ btn.disabled=true; }
       }
       btn.className=cls; grid.appendChild(btn);
     })(d);
@@ -249,14 +361,10 @@ var statusOverride=null;
 function onPick(s){
   statusOverride=null;
   if(!selStart||(selStart&&selEnd)){ selStart=s; selEnd=null; }
-  else{
-    if(s<=selStart){ selStart=s; selEnd=null; }
-    else if(inBookedRange(selStart,s)){
-      selStart=s; selEnd=null;
-      statusOverride="Those dates include booked nights — starting a new selection.";
-    }
-    else{ selEnd=s; }
-  }
+  else if(s===selStart){ selStart=null; selEnd=null; }
+  else if(s<selStart){ selStart=s; selEnd=null; }
+  else if(validStay(selStart,s)){ selEnd=s; }
+  else{ selStart=s; selEnd=null; } /* unreachable via clicks; safety net */
   render(); broadcast();
   if(selStart && selEnd){ gadsFireMicro(); }
 }
@@ -367,7 +475,11 @@ function updateBar(){
   }else{
     bar.classList.remove("show"); cta.classList.remove("show");
     status.classList.remove("hidden");
-    status.textContent=statusOverride||(selStart?"Now tap your checkout date.":"Tap your dates to check rates and book.");
+    status.textContent=statusOverride||(selStart
+      ? (satOnly(selStart)
+          ? "Summer stays run Saturday to Saturday — tap a Saturday checkout."
+          : "Now tap your checkout date ("+minNights()+"-night minimum).")
+      : "Tap your dates to check rates and book.");
   }
 }
 
