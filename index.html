@@ -75,6 +75,7 @@ body{margin:0;background:var(--bg);color:var(--ink);
   align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;background:#fffdf9}
 #jcl-bar.show{display:flex}
 #jcl-summary{font-size:14px}
+#jcl-rate{font-size:13px;color:var(--muted);margin-top:4px}
 #jcl-cta{background:var(--accent);color:var(--accent-ink);border:0;border-radius:0;padding:12px 28px;
   font-size:15px;font-weight:600;cursor:pointer;text-decoration:none;display:none;font-family:inherit}
 #jcl-cta.show{display:inline-block}
@@ -103,7 +104,7 @@ body{margin:0;background:var(--bg);color:var(--ink);
   <div class="jcl-grid" id="jcl-grid" role="grid" aria-label="Availability calendar"></div>
   <p id="jcl-status">Tap your dates to check rates and book.</p>
   <div id="jcl-bar">
-    <span id="jcl-summary"></span>
+    <span><span id="jcl-summary"></span><div id="jcl-rate"></div></span>
     <span>
       <a id="jcl-cta" href="#" target="_top" rel="noopener">Check Rates & Book</a>
       <button id="jcl-clear">Clear</button>
@@ -187,6 +188,8 @@ var PROPERTY = "Vitamin Sea";
 var GADS = {"conversion_id": "AW-18505762396", "book_click_label": "ZTLiCPbimpgdENyMnvhE", "date_select_label": "s-xnCPHNppgdENyMnvhE"}; /* null until config.json gains a google_ads block */
 var FBP = {"pixel_id": "1631241165061482"}; /* null until config.json gains a meta_pixel block */
 var CLICKLOG = {"endpoint": "https://vitamin-sea-clicklog.oasis-rentals-sc-llc.workers.dev/log"}; /* null until config.json gains a click_log block */
+var RATE = {"endpoint": "https://vitamin-sea-clicklog.oasis-rentals-sc-llc.workers.dev/rate"}; /* null until config.json gains a rate block */
+var CTA_LABEL = "Check Rates & Book";
 var RULES = {"min_nights": 3, "relax_within_days": 30, "sat_to_sat_windows": [{"start": "2027-05-29", "end": "2027-08-13"}]}; /* {min_nights, relax_within_days, sat_to_sat_windows:[{start,end}]} */
 
 var MONTHS = ["January","February","March","April","May","June","July",
@@ -495,6 +498,42 @@ function fbpTrack(eventName){
   try{ fbq("track", eventName); }catch(e){}
 }
 
+/* On-demand rate quote. When a complete range is selected, ask the
+   Worker for the gross rent (no promo code — Island Realty's own promos
+   are applied on their booking page, not here) and show the average
+   rent per night. Any failure — endpoint changed, timeout, unavailable
+   dates — falls back silently to the plain "Check Rates & Book" button,
+   so a broken quote can never break booking. */
+var _rateKey=null;
+function fmtMoney(x){
+  return "$"+Math.round(x).toString().replace(/\B(?=(\d{3})+(?!\d))/g,",");
+}
+function resetRate(){
+  var r=document.getElementById("jcl-rate"); if(r) r.textContent="";
+  var cta=document.getElementById("jcl-cta"); if(cta) cta.textContent=CTA_LABEL;
+}
+function fetchRate(){
+  var rateEl=document.getElementById("jcl-rate");
+  var cta=document.getElementById("jcl-cta");
+  if(!RATE||!RATE.endpoint||!selStart||!selEnd||!rateEl){ resetRate(); return; }
+  var key=selStart+"|"+selEnd; _rateKey=key;
+  rateEl.textContent="Checking rate…";
+  var ctrl=null;
+  try{ ctrl=new AbortController(); setTimeout(function(){ try{ ctrl.abort(); }catch(e){} },4000); }catch(e){}
+  var opts={method:"POST",headers:{"Content-Type":"application/json"},
+    body:JSON.stringify({ci:selStart,co:selEnd})};
+  if(ctrl) opts.signal=ctrl.signal;
+  fetch(RATE.endpoint,opts)
+    .then(function(res){ if(!res.ok) throw new Error("bad status"); return res.json(); })
+    .then(function(d){
+      if(key!==_rateKey) return;
+      if(!d||!d.ok||!d.rent||!d.nights){ resetRate(); return; }
+      rateEl.textContent="Rent "+fmtMoney(d.rent)+" · avg "+fmtMoney(d.avgPerNight)+"/night, before taxes & fees";
+      if(cta) cta.textContent="Book";
+    })
+    .catch(function(){ if(key===_rateKey) resetRate(); });
+}
+
 function updateBar(){
   var bar=document.getElementById("jcl-bar");
   var cta=document.getElementById("jcl-cta");
@@ -505,9 +544,10 @@ function updateBar(){
       "<b>"+pretty(selStart)+"</b> &rarr; <b>"+pretty(selEnd)+"</b> &middot; "+n+(n===1?" night":" nights");
     bar.classList.add("show");
     status.classList.add("hidden");
-    if(INQUIRY){ cta.href=inquiryHref(); cta.classList.add("show"); }
+    if(INQUIRY){ cta.href=inquiryHref(); cta.classList.add("show"); fetchRate(); }
     else{ cta.classList.remove("show"); }
   }else{
+    resetRate();
     bar.classList.remove("show"); cta.classList.remove("show");
     status.classList.remove("hidden");
     status.textContent=statusOverride||(selStart
