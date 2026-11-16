@@ -472,6 +472,33 @@ function clickLogFire(){
   }catch(e){}
 }
 
+/* Promo-view beacon: when the Winter Special callout is actually shown
+   (qualifying stay + successful rate), log the view so the promo funnel
+   (views -> book clicks) can be measured. Deduped per date range, so
+   re-selecting the same range does not double-count. Same beacon
+   mechanism as the book click. */
+var _promoLastView = null;
+function promoViewFire(){
+  if(!CLICKLOG || !CLICKLOG.endpoint || !selStart || !selEnd) return;
+  var key = selStart + "|" + selEnd;
+  if(key === _promoLastView) return;
+  _promoLastView = key;
+  try{
+    var payload = JSON.stringify({
+      t: new Date().toISOString(),
+      ci: selStart,
+      co: selEnd,
+      n: nightsBetween(selStart, selEnd),
+      ev: "promo_view"
+    });
+    if(navigator.sendBeacon){
+      navigator.sendBeacon(CLICKLOG.endpoint, new Blob([payload], {type: "text/plain"}));
+    }else{
+      fetch(CLICKLOG.endpoint, {method: "POST", body: payload, keepalive: true, mode: "no-cors"});
+    }
+  }catch(e){}
+}
+
 function gadsFirePrimary(){
   clickLogFire();
   var url = document.getElementById("jcl-cta").href;
@@ -548,6 +575,7 @@ function fetchRate(){
       if(qualifiesForPromo()&&promoEl){
         promoEl.textContent=PROMO.label+" — "+PROMO.discount_pct+"% off this stay: "+fmtMoney(promoPrice(d.rent))+" total · code "+PROMO.code;
         if(cta) cta.textContent="Book now";
+        promoViewFire();
       }else{
         if(promoEl) promoEl.textContent="";
         if(cta) cta.textContent="Book";
