@@ -181,7 +181,8 @@ var GADS = {"conversion_id": "AW-18505762396", "book_click_label": "ZTLiCPbimpgd
 var FBP = {"pixel_id": "1631241165061482"}; /* null until config.json gains a meta_pixel block */
 var CLICKLOG = {"endpoint": "https://vitamin-sea-clicklog.oasis-rentals-sc-llc.workers.dev/log"}; /* null until config.json gains a click_log block */
 var RATE = {"endpoint": "https://vitamin-sea-clicklog.oasis-rentals-sc-llc.workers.dev/rate"}; /* null until config.json gains a rate block */
-var PROMO = {"code": "WINTER25", "discount_pct": 25, "label": "Winter Special", "checkin_start": "2027-01-03", "checkin_end": "2027-02-11", "min_nights": 3, "max_nights": 4}; /* null until config.json gains a promo block */
+var PROMOS = [{"code": "RARE15", "discount_pct": 15, "label": "Year-End Special", "checkin_start": "", "checkin_end": "2026-12-31", "min_nights": null, "max_nights": null}, {"code": "WINTER25", "discount_pct": 25, "label": "Winter Special", "checkin_start": "2027-01-03", "checkin_end": "2027-02-11", "min_nights": 3, "max_nights": 4}]; /* [] until config.json gains a promos list */
+var PROMO_FIXED = 761.07; /* fixed rent component Island Realty's promo engine never discounts (see activePromo) */
 var CTA_LABEL = "Check Rates & Book";
 var RULES = {"min_nights": 3, "relax_within_days": 30, "sat_to_sat_windows": [{"start": "2027-05-29", "end": "2027-08-13"}]}; /* {min_nights, relax_within_days, sat_to_sat_windows:[{start,end}]} */
 
@@ -392,21 +393,35 @@ function broadcast(){
   }catch(e){}
 }
 
-/* Winter promo (config.json -> promo). A short stay whose check-in falls
-   inside the promo window gets the special: the widget shows the
-   discounted total and pre-fills the code on the booking link. The
-   discount is on base rent, before taxes & fees; Island Realty's
-   booking page is authoritative on the final price. */
-function qualifiesForPromo(){
-  if(!PROMO||!PROMO.code||!selStart||!selEnd) return false;
+/* Promos (config.json -> promos). A stay whose check-in falls inside a
+   promo's window (and night bounds, if any) gets the special: the widget
+   shows the discounted total and pre-fills the code on the booking link.
+   Windows do not overlap, so at most one promo qualifies per stay.
+   IMPORTANT — the discount is NOT a flat pct off the rent. Island
+   Realty's promo engine leaves a fixed ~$761.07 slice of the rent
+   undiscounted (verified 2026-11-17 across 7 stays, Dec 2026–Jan 2027,
+   both codes: discounted rent = (1-pct)*(rent-761.07)+761.07, e.g.
+   WINTER25 on $2,270 rent is $1,893, not $1,703; RARE15 on $2,270 is
+   $2,044, not $1,930). The booking page is authoritative on the final
+   price; PROMO_FIXED carries that slice from config. */
+function activePromo(){
+  if(!PROMOS||!selStart||!selEnd) return null;
   var n=nightsBetween(selStart,selEnd);
-  var minN=PROMO.min_nights||3, maxN=PROMO.max_nights||4;
-  return selStart>=PROMO.checkin_start&&selStart<=PROMO.checkin_end
-      &&n>=minN&&n<=maxN;
+  for(var i=0;i<PROMOS.length;i++){
+    var p=PROMOS[i];
+    if(!p.code) continue;
+    if(p.checkin_start && selStart<p.checkin_start) continue;
+    if(p.checkin_end && selStart>p.checkin_end) continue;
+    if(p.min_nights && n<p.min_nights) continue;
+    if(p.max_nights && n>p.max_nights) continue;
+    return p;
+  }
+  return null;
 }
-function promoPrice(rent){
-  var pct=PROMO.discount_pct||0;
-  return Math.round(rent*(100-pct)/100);
+function promoPrice(rent,promo){
+  var pct=promo.discount_pct||0;
+  var fixed=PROMO_FIXED||0;
+  return Math.round(rent*(100-pct)/100 + pct/100*fixed);
 }
 
 function inquiryHref(){
@@ -425,7 +440,8 @@ function inquiryHref(){
     var url=INQUIRY.url.split("{checkin}").join(fmtDate(selStart))
                        .split("{checkout}").join(fmtDate(selEnd))
                        .split("{nights}").join(String(n));
-    if(qualifiesForPromo()) url+="&promocode="+encodeURIComponent(PROMO.code);
+    var ap=activePromo();
+    if(ap) url+="&promocode="+encodeURIComponent(ap.code);
     return url;
   }
   return "#";
@@ -471,15 +487,16 @@ function clickLogFire(){
   }catch(e){}
 }
 
-/* Promo-view beacon: when the Winter Special callout is actually shown
-   (qualifying stay + successful rate), log the view so the promo funnel
-   (views -> book clicks) can be measured. Deduped per date range, so
-   re-selecting the same range does not double-count. Same beacon
-   mechanism as the book click. */
+/* Promo-view beacon: when a promo callout is actually shown
+   (qualifying stay + successful rate), log the view so each promo's
+   funnel (views -> book clicks) can be measured. The promo code rides
+   along so funnels stay separate per code. Deduped per promo + date
+   range, so re-selecting the same range does not double-count. Same
+   beacon mechanism as the book click. */
 var _promoLastView = null;
-function promoViewFire(){
+function promoViewFire(code){
   if(!CLICKLOG || !CLICKLOG.endpoint || !selStart || !selEnd) return;
-  var key = selStart + "|" + selEnd;
+  var key = (code||"") + "|" + selStart + "|" + selEnd;
   if(key === _promoLastView) return;
   _promoLastView = key;
   try{
@@ -488,7 +505,8 @@ function promoViewFire(){
       ci: selStart,
       co: selEnd,
       n: nightsBetween(selStart, selEnd),
-      ev: "promo_view"
+      ev: "promo_view",
+      code: code || null
     });
     if(navigator.sendBeacon){
       navigator.sendBeacon(CLICKLOG.endpoint, new Blob([payload], {type: "text/plain"}));
@@ -571,10 +589,11 @@ function fetchRate(){
       if(key!==_rateKey) return;
       if(!d||!d.ok||!d.rent||!d.nights){ resetRate(); return; }
       rateEl.textContent="Rent "+fmtMoney(d.rent)+" · avg "+fmtMoney(d.avgPerNight)+"/night, before taxes & fees";
-      if(qualifiesForPromo()&&promoEl){
-        promoEl.textContent=PROMO.label+" — "+PROMO.discount_pct+"% off this stay: "+fmtMoney(promoPrice(d.rent))+" total · code "+PROMO.code;
+      var ap=activePromo();
+      if(ap&&promoEl){
+        promoEl.textContent=ap.label+" — "+ap.discount_pct+"% off this stay: "+fmtMoney(promoPrice(d.rent,ap))+" total · code "+ap.code;
         if(cta) cta.textContent="Book now";
-        promoViewFire();
+        promoViewFire(ap.code);
       }else{
         if(promoEl) promoEl.textContent="";
         if(cta) cta.textContent="Book";
